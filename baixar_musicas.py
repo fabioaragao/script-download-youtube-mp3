@@ -4,6 +4,7 @@ import platform
 import subprocess
 import time
 import logging
+import unicodedata
 
 # === 1. Configuração de Logging ===
 # Define diretório de trabalho como o diretório do script
@@ -161,38 +162,76 @@ def baixar_musica(termo_busca, index, total):
     logging.info(f"🔎 [{index}/{total}] Buscando e baixando: {termo_busca}")
     
     try:
+        # Busca os 10 primeiros resultados para tentar encontrar TÍTULO exatamente igual
+        search_query = f"ytsearch10:{termo_busca}"
+
+        def _normalize(s: str) -> str:
+            # Normaliza para comparação: remove espaços extra e comparações case-insensitive
+            return " ".join(s.split()).strip().lower() if s else ""
+
         with YoutubeDL(ydl_opts) as ydl:
-            # extract_info com download=True faz tudo de uma vez
-            # Se a string não for URL, o default_search='ytsearch1' cuida disso
-            info = ydl.extract_info(termo_busca, download=True)
-            
-            # Se for uma pesquisa, info['entries'][0] contém os dados
-            if 'entries' in info:
-                video_info = info['entries'][0]
-            else:
-                video_info = info
-                
-            titulo_video = video_info.get('title', 'Desconhecido')
-            logging.info(f"✅ Vídeo encontrado: {titulo_video}")
-            
-            # Tentar adivinhar o nome do arquivo final
-            # O yt-dlp pode mudar o nome levemente dependendo dos caracteres
-            expected_filename = ydl.prepare_filename(video_info)
-            # Como convertemos para mp3, a extensão muda de .webm/.m4a para .mp3
-            pre_ext = os.path.splitext(expected_filename)[0]
-            final_filename = f"{pre_ext}.mp3"
-            
-            # Validação simples
-            if os.path.exists(final_filename):
-                size = os.path.getsize(final_filename)
-                if size > 0:
-                     logging.info(f"🎉 Sucesso: '{final_filename}' salvo ({size/1024/1024:.2f} MB).")
+            # Primeiro apenas pesquisa (sem baixar)
+            info = ydl.extract_info(search_query, download=False)
+
+            entries = info.get('entries', []) if info else []
+            matched_entry = None
+
+            for entry in entries:
+                title = entry.get('title') if entry else ''
+                if _normalize(title) == _normalize(termo_busca):
+                    matched_entry = entry
+                    break
+
+            if not matched_entry:
+                logging.warning(f"⚠️ Não foi encontrado resultado com título exatamente igual para: '{termo_busca}'. Pulando.")
+                return
+
+            # Se encontrou, baixa especificamente esse vídeo
+            video_url = matched_entry.get('webpage_url') or f"https://www.youtube.com/watch?v={matched_entry.get('id')}"
+            video_title = matched_entry.get('title') or termo_busca
+            logging.info(f"✅ Título exato localizado: {video_title}. Baixando {video_url} ...")
+
+            # Sanitiza título para uso em nome de arquivo (remove apenas caracteres inválidos no filesystem)
+            def sanitize_filename(name: str) -> str:
+                # Normaliza Unicode para NFC (preserva acentos) e remove apenas caracteres inválidos de arquivo
+                name = unicodedata.normalize('NFC', name)
+                # Remove caracteres inválidos no Windows: <>:"/\|?* e substitui por underscore
+                invalid = '<>:"/\\|?*'
+                sanitized = ''.join('_' if c in invalid else c for c in name)
+                # Remove caracteres de controle (ord < 32) e normalize espaços
+                sanitized = ''.join(ch for ch in sanitized if ord(ch) >= 32)
+                sanitized = ' '.join(sanitized.split()).strip()
+                # Evita nomes vazios
+                return sanitized or 'downloaded_audio'
+
+            safe_title = sanitize_filename(video_title)
+
+            # Cria opções locais para garantir que o arquivo seja salvo com o título exato (sanitizado)
+            ydl_opts_local = dict(ydl_opts)
+            ydl_opts_local['outtmpl'] = f"{safe_title}.%(ext)s"
+
+            # Garante que metadata será escrita no arquivo final
+            # Acrescenta FFmpegMetadata ao pipeline de postprocessadores se ainda não estiver presente
+            pp = list(ydl_opts_local.get('postprocessors', []))
+            if not any(p.get('key') == 'FFmpegMetadata' for p in pp):
+                pp.append({'key': 'FFmpegMetadata'})
+            ydl_opts_local['postprocessors'] = pp
+
+            # Baixa usando opções locais (irá converter para mp3 e escrever metadata)
+            with YoutubeDL(ydl_opts_local) as ydl_local:
+                video_info = ydl_local.extract_info(video_url, download=True)
+
+                # Como outtmpl já foi definido para safe_title, o arquivo final esperado é:
+                final_filename = f"{safe_title}.mp3"
+
+                if os.path.exists(final_filename):
+                    size = os.path.getsize(final_filename)
+                    if size > 0:
+                        logging.info(f"🎉 Sucesso: '{final_filename}' salvo ({size/1024/1024:.2f} MB).")
+                    else:
+                        logging.error(f"⚠️ Atenção: O arquivo '{final_filename}' foi criado mas está vazio.")
                 else:
-                     logging.error(f"⚠️ Atenção: O arquivo '{final_filename}' foi criado mas está vazio.")
-            else:
-                # Às vezes o yt-dlp limpa caracteres especiais, então pode ser difícil achar o arquivo exato
-                # Mas se não deu erro no download, provavelmente está lá.
-                logging.warning(f"⚠️ Download finalizado, mas não consegui verificar o arquivo exato '{final_filename}'. Verifique a pasta.")
+                    logging.warning(f"⚠️ Download finalizado, mas não consegui verificar o arquivo exato '{final_filename}'. Verifique a pasta.")
                 
     except Exception as e:
         logging.error(f"❌ Erro ao processar '{termo_busca}': {str(e)}")
