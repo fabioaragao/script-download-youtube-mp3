@@ -1,93 +1,70 @@
 # Music Downloader via YouTube Search
 
-Este projeto contém um script Python que lê uma lista de músicas de um arquivo `.txt`, busca cada música no YouTube, e faz o download do áudio em formato `.mp3`. O processo é feito **uma música por vez**, com mensagens verbosas para acompanhamento do status de cada etapa.
+Este projeto contém um script Python que lê uma lista de músicas de um arquivo `.txt`, busca cada música no YouTube automaticamente, e faz o download do áudio em formato `.mp3`.
 
 ---
 
 ## Funcionalidades
 
-- Lê uma lista de músicas do arquivo `music_list.txt` (uma música por linha).
-- Detecta automaticamente o sistema operacional (Windows ou Linux).
-- Instala automaticamente as dependências Python necessárias (`yt-dlp` e `youtubesearchpython`).
-- Detecta se o `ffmpeg` está instalado; caso contrário, instala (Linux) ou usa o executável fornecido (Windows).
-- Se estiver no Windows e não houver o ffmpeg, você pode baixar manualmente através do link que está no arquivo `link_para_baixar_o_ffmpeg.txt`.
-- Procura a melhor correspondência da música no YouTube.
-- Faz download do áudio da música em alta qualidade e converte para `.mp3`.
-- Processo sequencial, uma música por vez, com mensagens claras de sucesso, falha, ou progresso.
-- Fácil de usar e configurar.
+- **Busca Automática**: Lê `music_list.txt` e encontra a melhor correspondência no YouTube.
+- **Download em MP3**: Baixa e converte o áudio automaticamente com alta qualidade (192kbps).
+- **Sistema de Logs**: Gera um arquivo `download_log.txt` com detalhes de cada operação (sucessos, erros, avisos e caminhos dos arquivos).
+- **Validação Automática**: Verifica se o arquivo foi realmente criado e se não está vazio após o download.
+- **Multi-plataforma**: Funciona em Windows e Linux, com detecção automática.
+- **Gestão de Dependências**: Instala automaticamente o `yt-dlp` e tenta configurar o `ffmpeg` se não estivar presente.
 
 ---
 
 ## Requisitos
 
-- **Python 3.7+** instalado no sistema.
-- Internet ativa para baixar dependências e músicas.
-- No Linux, privilégios para instalar `ffmpeg` via apt (ou já ter instalado).
-- No Windows, caso não queira instalar manualmente, o link para baixar o `ffmpeg` está no arquivo `link_para_baixar_o_ffmpeg.txt`.
+- **Python 3.7+** instalado.
+- Conexão com internet.
+- **Windows**: O script tenta baixar o `ffmpeg` automaticamente se não encontrar no sistema ou na pasta local `ffmpeg/`.
+- **Linux**: Tenta instalar via `sudo apt install ffmpeg` se necessário.
 
 ---
-
 
 ## Como usar
 
 ### 1. Preparar lista de músicas
 
-Crie o arquivo `music_list.txt` no mesmo diretório do script. Exemplo:
-Cafe 432 ft Janine Dyer - Freedom (Cafe 432 Extended Rework Mix)
-Michael Gray ft Leela D - Save Me
-Staxx - Joy (Dr Packer Extended Mix)
+Crie (ou edite) o arquivo `music_list.txt` no mesmo diretório do script. Coloque o nome da música/artista por linha.
+Exemplo:
+```text
+Cafe 432 ft Janine Dyer - Freedom
+Michael Gray - Save Me
+Staxx - Joy
+```
 
----
+### 2. Rodar o script
 
-
-Cada linha é uma busca independente no YouTube.
-
-### 2. Instalar ffmpeg (somente Windows)
-
-- Caso esteja usando Windows e não tenha o `ffmpeg` instalado, baixe utilizando o link 
-disponível no arquivo `link_para_baixar_o_ffmpeg.txt`.
-- Após baixar, extraia e coloque o executável `ffmpeg.exe` no mesmo diretório do 
-script **ou** adicione o caminho do ffmpeg nas variáveis de ambiente do Windows.
-
-### 3. Rodar o script
-
-No terminal (Linux/macOS) ou Prompt de Comando/PowerShell (Windows), execute:
+No terminal ou Prompt de Comando, execute:
 
 ```bash
 python baixar_musicas.py
+```
 
-O script fará o resto: instalará dependências, verificará o ffmpeg, buscará e baixará cada música, exibindo mensagens detalhadas.
-4. Resultado
+O script irá:
+1. Instalar a biblioteca `yt-dlp` se não estiver instalada.
+2. Verificar se o `ffmpeg` está acessível (instalando ou baixando se preciso).
+3. Buscar cada termo no YouTube e baixar o primeiro resultado.
+4. Salvar o log de execução em `download_log.txt`.
 
-Ao final, os arquivos .mp3 estarão salvos no mesmo diretório.
+### 3. Resultado
 
+- Os arquivos `.mp3` serão salvos na mesma pasta do script.
+- Abra o arquivo `download_log.txt` para conferir o status de cada download.
 
-Detalhes Técnicos
+---
 
-    Usa yt-dlp para download e conversão.
+## Detalhes Técnicos
 
-    Usa youtubesearchpython para busca.
+- **Mecanismo Principal**: Utiliza `yt-dlp` tanto para a busca (`ytsearch1`) quanto para o download e pós-processamento de áudio.
+- **Dependências**: Removeu-se a dependência de `youtubesearchpython` para maior estabilidade.
+- **Log**: Utiliza o módulo `logging` do Python com encoding UTF-8.
 
-    No Linux, tenta instalar ffmpeg via apt se não estiver instalado.
+---
 
-    No Windows, utiliza o executável ffmpeg.exe caso esteja no diretório ou no PATH.
+## Contribuição
 
-Considerações
-
-    O download depende da disponibilidade dos vídeos no YouTube.
-
-    Respeite os termos de uso do YouTube e direitos autorais.
-
-    Em caso de falha na busca ou no download, o script reporta o erro e segue para a próxima música.
-
-    Para melhorar performance ou adicionar funcionalidades (ex: paralelismo), você pode modificar o script.
-
-Contribuição
-
-Pull requests e issues são bem-vindos!
-Licença
-
-Este projeto está sob a licença MIT — sinta-se livre para usar e modificar.
-Contato
-
-Caso tenha dúvidas ou sugestões, abra uma issue ou me contate.
+Sinta-se livre para modificar e melhorar!

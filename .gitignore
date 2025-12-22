@@ -1,0 +1,5 @@
+__pycache__/
+ffmpeg/
+*.mp3
+download_log.txt
+*.pyc
