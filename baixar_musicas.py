@@ -160,19 +160,70 @@ ydl_opts = {
 # === 8. Função de download ===
 def baixar_musica(termo_busca, index, total):
     logging.info(f"🔎 [{index}/{total}] Buscando e baixando: {termo_busca}")
-    
+
+    def _normalize(s: str) -> str:
+        return " ".join(s.split()).strip().lower() if s else ""
+
+    def sanitize_filename(name: str) -> str:
+        name = unicodedata.normalize('NFC', name)
+        invalid = '<>:"/\\|?*'
+        sanitized = ''.join('_' if c in invalid else c for c in name)
+        sanitized = ''.join(ch for ch in sanitized if ord(ch) >= 32)
+        sanitized = ' '.join(sanitized.split()).strip()
+        return sanitized or 'downloaded_audio'
+
     try:
-        # Busca os 10 primeiros resultados para tentar encontrar TÍTULO exatamente igual
+        # Detecta se a entrada é uma URL do YouTube
+        is_url = False
+        term_lower = termo_busca.lower()
+        if term_lower.startswith('http://') or term_lower.startswith('https://') or 'youtube.com' in term_lower or 'youtu.be' in term_lower:
+            is_url = True
+
+        if is_url:
+            video_url = termo_busca
+            video_title = None
+
+            # Tenta obter informações do vídeo para extrair o título
+            try:
+                with YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(video_url, download=False)
+                    video_title = info.get('title') if info else None
+            except Exception:
+                logging.warning(f"⚠️ Falha ao obter metadados para URL '{video_url}', tentando download direto.")
+
+            video_title = video_title or video_url
+            logging.info(f"🔗 URL detectada. Baixando: {video_url}")
+
+            safe_title = sanitize_filename(video_title)
+            ydl_opts_local = dict(ydl_opts)
+            ydl_opts_local['outtmpl'] = f"{safe_title}.%(ext)s"
+
+            pp = list(ydl_opts_local.get('postprocessors', []))
+            if not any(p.get('key') == 'FFmpegMetadata' for p in pp):
+                pp.append({'key': 'FFmpegMetadata'})
+            ydl_opts_local['postprocessors'] = pp
+
+            with YoutubeDL(ydl_opts_local) as ydl_local:
+                ydl_local.extract_info(video_url, download=True)
+
+            final_filename = f"{safe_title}.mp3"
+            if os.path.exists(final_filename):
+                size = os.path.getsize(final_filename)
+                if size > 0:
+                    logging.info(f"🎉 Sucesso: '{final_filename}' salvo ({size/1024/1024:.2f} MB).")
+                    return True
+                else:
+                    logging.error(f"⚠️ Atenção: O arquivo '{final_filename}' foi criado mas está vazio.")
+                    return False
+            else:
+                logging.warning(f"⚠️ Download finalizado, mas não consegui verificar o arquivo exato '{final_filename}'. Verifique a pasta.")
+                return False
+
+        # Se não for URL, mantém a lógica de busca por título exato
         search_query = f"ytsearch10:{termo_busca}"
 
-        def _normalize(s: str) -> str:
-            # Normaliza para comparação: remove espaços extra e comparações case-insensitive
-            return " ".join(s.split()).strip().lower() if s else ""
-
         with YoutubeDL(ydl_opts) as ydl:
-            # Primeiro apenas pesquisa (sem baixar)
             info = ydl.extract_info(search_query, download=False)
-
             entries = info.get('entries', []) if info else []
             matched_entry = None
 
@@ -184,65 +235,60 @@ def baixar_musica(termo_busca, index, total):
 
             if not matched_entry:
                 logging.warning(f"⚠️ Não foi encontrado resultado com título exatamente igual para: '{termo_busca}'. Pulando.")
-                return
+                return False
 
-            # Se encontrou, baixa especificamente esse vídeo
             video_url = matched_entry.get('webpage_url') or f"https://www.youtube.com/watch?v={matched_entry.get('id')}"
             video_title = matched_entry.get('title') or termo_busca
             logging.info(f"✅ Título exato localizado: {video_title}. Baixando {video_url} ...")
 
-            # Sanitiza título para uso em nome de arquivo (remove apenas caracteres inválidos no filesystem)
-            def sanitize_filename(name: str) -> str:
-                # Normaliza Unicode para NFC (preserva acentos) e remove apenas caracteres inválidos de arquivo
-                name = unicodedata.normalize('NFC', name)
-                # Remove caracteres inválidos no Windows: <>:"/\|?* e substitui por underscore
-                invalid = '<>:"/\\|?*'
-                sanitized = ''.join('_' if c in invalid else c for c in name)
-                # Remove caracteres de controle (ord < 32) e normalize espaços
-                sanitized = ''.join(ch for ch in sanitized if ord(ch) >= 32)
-                sanitized = ' '.join(sanitized.split()).strip()
-                # Evita nomes vazios
-                return sanitized or 'downloaded_audio'
-
             safe_title = sanitize_filename(video_title)
-
-            # Cria opções locais para garantir que o arquivo seja salvo com o título exato (sanitizado)
             ydl_opts_local = dict(ydl_opts)
             ydl_opts_local['outtmpl'] = f"{safe_title}.%(ext)s"
 
-            # Garante que metadata será escrita no arquivo final
-            # Acrescenta FFmpegMetadata ao pipeline de postprocessadores se ainda não estiver presente
             pp = list(ydl_opts_local.get('postprocessors', []))
             if not any(p.get('key') == 'FFmpegMetadata' for p in pp):
                 pp.append({'key': 'FFmpegMetadata'})
             ydl_opts_local['postprocessors'] = pp
 
-            # Baixa usando opções locais (irá converter para mp3 e escrever metadata)
             with YoutubeDL(ydl_opts_local) as ydl_local:
-                video_info = ydl_local.extract_info(video_url, download=True)
+                ydl_local.extract_info(video_url, download=True)
 
-                # Como outtmpl já foi definido para safe_title, o arquivo final esperado é:
-                final_filename = f"{safe_title}.mp3"
-
-                if os.path.exists(final_filename):
-                    size = os.path.getsize(final_filename)
-                    if size > 0:
-                        logging.info(f"🎉 Sucesso: '{final_filename}' salvo ({size/1024/1024:.2f} MB).")
-                    else:
-                        logging.error(f"⚠️ Atenção: O arquivo '{final_filename}' foi criado mas está vazio.")
+            final_filename = f"{safe_title}.mp3"
+            if os.path.exists(final_filename):
+                size = os.path.getsize(final_filename)
+                if size > 0:
+                    logging.info(f"🎉 Sucesso: '{final_filename}' salvo ({size/1024/1024:.2f} MB).")
+                    return True
                 else:
-                    logging.warning(f"⚠️ Download finalizado, mas não consegui verificar o arquivo exato '{final_filename}'. Verifique a pasta.")
-                
+                    logging.error(f"⚠️ Atenção: O arquivo '{final_filename}' foi criado mas está vazio.")
+                    return False
+            else:
+                logging.warning(f"⚠️ Download finalizado, mas não consegui verificar o arquivo exato '{final_filename}'. Verifique a pasta.")
+                return False
+
     except Exception as e:
         logging.error(f"❌ Erro ao processar '{termo_busca}': {str(e)}")
+        return False
 
 # === 9. Inicia processo ===
 logging.info("🚀 Iniciando fila de downloads...\n")
 
+# Contadores de resultados
+musicas_encontradas = 0
+musicas_nao_encontradas = 0
+
 for i, musica in enumerate(musicas, 1):
-    baixar_musica(musica, i, len(musicas))
+    sucesso = baixar_musica(musica, i, len(musicas))
+    if sucesso:
+        musicas_encontradas += 1
+    else:
+        musicas_nao_encontradas += 1
+
     if i < len(musicas):
         logging.info("➡️ Aguardando para próxima música...")
-        time.sleep(1) 
+        time.sleep(1)
+
+logging.info(f"musicas encontradas: {musicas_encontradas}")
+logging.info(f"musicas nao encontradas: {musicas_nao_encontradas}")
 
 logging.info("\n✅ Processo finalizado! Verifique o arquivo 'download_log.txt' para detalhes.")
