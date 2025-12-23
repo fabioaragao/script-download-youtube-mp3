@@ -5,6 +5,7 @@ import subprocess
 import time
 import logging
 import unicodedata
+import re
 
 # === 1. Configuração de Logging ===
 # Define diretório de trabalho como o diretório do script
@@ -161,8 +162,20 @@ ydl_opts = {
 def baixar_musica(termo_busca, index, total):
     logging.info(f"🔎 [{index}/{total}] Buscando e baixando: {termo_busca}")
 
-    def _normalize(s: str) -> str:
-        return " ".join(s.split()).strip().lower() if s else ""
+# Normalização mais robusta: remove acentos, pontuação comum e normaliza espaços
+def normalize_string(s: str) -> str:
+    if not s:
+        return ""
+    # Decompose Unicode and remove diacritics
+    s = unicodedata.normalize('NFKD', s)
+    s = ''.join(ch for ch in s if not unicodedata.combining(ch))
+    # Normalize some punctuation variants
+    s = s.replace('–', '-').replace('—', '-').replace('’', "'").replace('‘', "'")
+    # Remove any character that is not letter/number/space
+    s = re.sub(r"[^0-9A-Za-z\s]", ' ', s)
+    # Collapse whitespace and lowercase
+    s = re.sub(r"\s+", ' ', s).strip().lower()
+    return s
 
     def sanitize_filename(name: str) -> str:
         name = unicodedata.normalize('NFC', name)
@@ -227,9 +240,13 @@ def baixar_musica(termo_busca, index, total):
             entries = info.get('entries', []) if info else []
             matched_entry = None
 
+            termo_norm = normalize_string(termo_busca)
+
             for entry in entries:
                 title = entry.get('title') if entry else ''
-                if _normalize(title) == _normalize(termo_busca):
+                title_norm = normalize_string(title)
+                # Aceita se for igualdade normativa ou se um contém o outro (mais tolerante)
+                if title_norm == termo_norm or termo_norm in title_norm or title_norm in termo_norm:
                     matched_entry = entry
                     break
 
