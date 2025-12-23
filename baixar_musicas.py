@@ -159,31 +159,29 @@ ydl_opts = {
 }
 
 # === 8. Função de download ===
-def baixar_musica(termo_busca, index, total):
-    logging.info(f"🔎 [{index}/{total}] Buscando e baixando: {termo_busca}")
-
-# Normalização mais robusta: remove acentos, pontuação comum e normaliza espaços
 def normalize_string(s: str) -> str:
     if not s:
         return ""
-    # Decompose Unicode and remove diacritics
     s = unicodedata.normalize('NFKD', s)
     s = ''.join(ch for ch in s if not unicodedata.combining(ch))
-    # Normalize some punctuation variants
     s = s.replace('–', '-').replace('—', '-').replace('’', "'").replace('‘', "'")
-    # Remove any character that is not letter/number/space
     s = re.sub(r"[^0-9A-Za-z\s]", ' ', s)
-    # Collapse whitespace and lowercase
     s = re.sub(r"\s+", ' ', s).strip().lower()
     return s
 
-    def sanitize_filename(name: str) -> str:
-        name = unicodedata.normalize('NFC', name)
-        invalid = '<>:"/\\|?*'
-        sanitized = ''.join('_' if c in invalid else c for c in name)
-        sanitized = ''.join(ch for ch in sanitized if ord(ch) >= 32)
-        sanitized = ' '.join(sanitized.split()).strip()
-        return sanitized or 'downloaded_audio'
+
+def sanitize_filename(name: str) -> str:
+    name = unicodedata.normalize('NFC', name)
+    invalid = '<>:"/\\|?*'
+    sanitized = ''.join('_' if c in invalid else c for c in name)
+    sanitized = ''.join(ch for ch in sanitized if ord(ch) >= 32)
+    sanitized = ' '.join(sanitized.split()).strip()
+    return sanitized or 'downloaded_audio'
+
+
+def baixar_musica(termo_busca, index, total):
+    # Espaçamento extra no log para separar cada música
+    logging.info(f"\n\n🔎 [{index}/{total}] Buscando e baixando: {termo_busca}")
 
     try:
         # Detecta se a entrada é uma URL do YouTube
@@ -232,7 +230,7 @@ def normalize_string(s: str) -> str:
                 logging.warning(f"⚠️ Download finalizado, mas não consegui verificar o arquivo exato '{final_filename}'. Verifique a pasta.")
                 return False
 
-        # Se não for URL, mantém a lógica de busca por título exato
+        # Se não for URL, mantém a lógica de busca por título
         search_query = f"ytsearch10:{termo_busca}"
 
         with YoutubeDL(ydl_opts) as ydl:
@@ -245,18 +243,17 @@ def normalize_string(s: str) -> str:
             for entry in entries:
                 title = entry.get('title') if entry else ''
                 title_norm = normalize_string(title)
-                # Aceita se for igualdade normativa ou se um contém o outro (mais tolerante)
                 if title_norm == termo_norm or termo_norm in title_norm or title_norm in termo_norm:
                     matched_entry = entry
                     break
 
             if not matched_entry:
-                logging.warning(f"⚠️ Não foi encontrado resultado com título exatamente igual para: '{termo_busca}'. Pulando.")
+                logging.warning(f"⚠️ Não foi encontrado resultado com título parecido para: '{termo_busca}'. Pulando.")
                 return False
 
             video_url = matched_entry.get('webpage_url') or f"https://www.youtube.com/watch?v={matched_entry.get('id')}"
             video_title = matched_entry.get('title') or termo_busca
-            logging.info(f"✅ Título exato localizado: {video_title}. Baixando {video_url} ...")
+            logging.info(f"✅ Título localizado: {video_title}. Baixando {video_url} ...")
 
             safe_title = sanitize_filename(video_title)
             ydl_opts_local = dict(ydl_opts)
@@ -290,22 +287,37 @@ def normalize_string(s: str) -> str:
 # === 9. Inicia processo ===
 logging.info("🚀 Iniciando fila de downloads...\n")
 
-# Contadores de resultados
+# Contadores de resultados e listas de relatório
 musicas_encontradas = 0
 musicas_nao_encontradas = 0
+musicas_falharam = []
+musicas_sucesso = []
 
 for i, musica in enumerate(musicas, 1):
+    # Chama o downloader (o próprio imprime espaçamento no log)
     sucesso = baixar_musica(musica, i, len(musicas))
     if sucesso:
         musicas_encontradas += 1
+        musicas_sucesso.append(musica)
+        logging.info(f"✅ Resultado: '{musica}' baixada com sucesso.")
     else:
         musicas_nao_encontradas += 1
+        musicas_falharam.append(musica)
+        logging.warning(f"❌ Resultado: não foi possível baixar: '{musica}'")
 
+    # Pequena pausa e separador para o próximo item
     if i < len(musicas):
-        logging.info("➡️ Aguardando para próxima música...")
+        logging.info("➡️ Aguardando para próxima música...\n")
         time.sleep(1)
 
-logging.info(f"musicas encontradas: {musicas_encontradas}")
-logging.info(f"musicas nao encontradas: {musicas_nao_encontradas}")
+logging.info(f"\n📊 Resumo: {musicas_encontradas} baixadas, {musicas_nao_encontradas} falharam.")
+
+if musicas_falharam:
+    logging.info("\n🎯 Lista de músicas NÃO baixadas:")
+    for idx, m in enumerate(musicas_falharam, 1):
+        logging.info(f"  {idx}. {m}")
+    logging.info("\nVerifique os motivos acima e tente novamente para essas entradas.")
+else:
+    logging.info("\n🎉 Todas as músicas foram baixadas com sucesso.")
 
 logging.info("\n✅ Processo finalizado! Verifique o arquivo 'download_log.txt' para detalhes.")
