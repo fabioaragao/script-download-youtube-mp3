@@ -316,8 +316,26 @@ if musicas_falharam:
     logging.info("\n🎯 Lista de músicas NÃO baixadas:")
     for idx, m in enumerate(musicas_falharam, 1):
         logging.info(f"  {idx}. {m}")
+
+    # Atualiza o arquivo original apenas com as pendentes
+    try:
+        with open(list_file, 'w', encoding='utf-8') as f:
+            for m in musicas_falharam:
+                f.write(f"{m}\n")
+        logging.info(f"\n📝 Arquivo '{list_file}' foi atualizado contendo apenas as músicas que falharam.")
+    except Exception as e:
+        logging.error(f"❌ Erro ao atualizar arquivo de lista: {e}")
+
     logging.info("\nVerifique os motivos acima e tente novamente para essas entradas.")
 else:
+    # Se tudo deu certo, limpa a lista
+    try:
+        with open(list_file, 'w', encoding='utf-8') as f:
+            pass
+        logging.info(f"\n📝 Arquivo '{list_file}' foi limpo (todos os downloads concluídos com sucesso).")
+    except Exception as e:
+        logging.error(f"❌ Erro ao limpar arquivo de lista: {e}")
+
     logging.info("\n🎉 Todas as músicas foram baixadas com sucesso.")
 
 logging.info("\n✅ Processo finalizado! Verifique o arquivo 'download_log.txt' para detalhes.")
